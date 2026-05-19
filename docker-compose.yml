@@ -1,0 +1,30 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: vigilance
+      POSTGRES_PASSWORD: vigilance_dev
+      POSTGRES_DB: vigilance_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vigilance -d vigilance_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://vigilance:vigilance_dev@db:5432/vigilance_db
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
