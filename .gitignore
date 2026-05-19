@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Node / React
+node_modules/
+dist/
+build/
+.next/
+
+# Environment variables (NEVER commit secrets)
+.env
+.env.local
+.env.production
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker
+*.log
+
+# AWS
+.aws/
+
+# Database
+*.db
+*.sqlite3
+
+# Test coverage
+htmlcov/
+.coverage
+coverage/
