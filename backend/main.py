@@ -1,7 +1,8 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 import anthropic
-from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi import FastAPI, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -11,17 +12,33 @@ from database import engine, get_db
 from models import Base, Asset, Zone
 from schemas import AssetResponse, ZoneResponse, AssetMoveRequest, DashboardStats
 from seed_data import seed_database
+from simulator import simulator
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Boot DB and seed
     Base.metadata.create_all(bind=engine)
     db = Session(bind=engine)
     try:
         seed_database(db)
     finally:
         db.close()
+
+    # Start the asset movement simulator as a background task.
+    # In production this slot would be filled by a UDP listener that receives
+    # packets from ceiling-mounted RFID readers and writes zone changes to Postgres.
+    sim_task = asyncio.create_task(simulator.start())
+
     yield
+
+    # Graceful shutdown
+    simulator.stop()
+    sim_task.cancel()
+    try:
+        await sim_task
+    except asyncio.CancelledError:
+        pass
 
 
 app = FastAPI(
@@ -43,6 +60,42 @@ app.add_middleware(
 @app.get("/health")
 def health_check():
     return {"status": "healthy", "service": "vigilance-api"}
+
+
+@app.websocket("/ws")
+async def websocket_feed(websocket: WebSocket):
+    """
+    Persistent WebSocket feed for real-time asset movement events.
+
+    The client connects once on page load and stays connected.  When the
+    simulator (or, in production, the UDP listener) moves an asset it calls
+    simulator.broadcast(), which pushes a JSON event to every subscriber here.
+
+    Event shape:
+        {
+            "type":           "asset_moved",
+            "asset_id":       5,
+            "asset_tag":      "A-042",
+            "asset_name":     "Torque Wrench Set",
+            "asset_status":   "active",
+            "from_zone_id":   2,
+            "from_zone_name": "Parts Storage",
+            "to_zone_id":     1,
+            "to_zone_name":   "Maintenance Bay A",
+            "timestamp":      "2026-05-20T14:32:07.123456+00:00"
+        }
+    """
+    await websocket.accept()
+    simulator.add_subscriber(websocket)
+    try:
+        # Keep the connection alive — we only send, never expect client messages,
+        # but receive_text() lets us detect disconnects cleanly.
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        simulator.remove_subscriber(websocket)
 
 
 @app.get("/assets", response_model=list[AssetResponse])
