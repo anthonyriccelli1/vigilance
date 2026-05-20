@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from "react-router";
-import { LayoutDashboard, Map, Package, Radar } from "lucide-react";
+import { LayoutDashboard, Map, Package } from "lucide-react";
 import { theme } from "../theme";
 
 const NAV_ITEMS = [
@@ -32,18 +32,11 @@ export default function Layout() {
             gap: 10,
           }}
         >
-          <div
-            style={{
-              background: theme.accent.primaryDim,
-              borderRadius: 8,
-              padding: 6,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Radar size={22} color={theme.accent.primary} />
-          </div>
+          <img
+            src="/Vigilance_Logo.png"
+            alt="Vigilance"
+            style={{ height: 36, width: "auto", objectFit: "contain" }}
+          />
           <div>
             <div style={{ color: theme.text.primary, fontSize: 16, fontWeight: 700, letterSpacing: "-0.02em" }}>
               VIGILANCE
