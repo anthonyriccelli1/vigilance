@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from "react-router";
 import { LayoutDashboard, Map, Package } from "lucide-react";
 import { theme } from "../theme";
+import ChatWidget from "./ChatWidget";
 
 const NAV_ITEMS = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -95,6 +96,9 @@ export default function Layout() {
       <main style={{ flex: 1, overflow: "auto" }}>
         <Outlet />
       </main>
+
+      {/* AI Chat Widget — floats over every page */}
+      <ChatWidget />
     </div>
   );
 }

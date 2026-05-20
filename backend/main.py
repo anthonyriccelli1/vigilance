@@ -1,8 +1,9 @@
 from contextlib import asynccontextmanager
 
+import anthropic
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import func
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from config import settings
@@ -142,3 +143,94 @@ def get_dashboard(db: Session = Depends(get_db)):
         non_compliant_assets=total - compliant,
         zones=zone_responses,
     )
+
+
+# ─────────────────────────────────────────
+# AI CHATBOT ENDPOINT
+# ─────────────────────────────────────────
+
+class ChatRequest(BaseModel):
+    message: str
+
+
+class ChatResponse(BaseModel):
+    reply: str
+
+
+@app.post("/chat", response_model=ChatResponse)
+def chat(request: ChatRequest, db: Session = Depends(get_db)):
+    """
+    AI assistant endpoint. Fetches live data from the database,
+    injects it into the system prompt, then asks Claude to answer
+    the user's question based on that real data.
+
+    This is the RAG-adjacent pattern — grounding the AI in real data
+    so it never hallucinates asset counts or zone assignments.
+    """
+
+    # Step 1: Fetch live data from the database
+    total = db.query(Asset).count()
+    active = db.query(Asset).filter(Asset.status == "active").count()
+    inactive = db.query(Asset).filter(Asset.status == "inactive").count()
+    maintenance = db.query(Asset).filter(Asset.status == "maintenance").count()
+    non_compliant = db.query(Asset).filter(Asset.compliant == False).count()
+
+    zones = db.query(Zone).all()
+    zone_summary = "\n".join([
+        f"  - {zone.name} ({zone.zone_type}): "
+        f"{db.query(Asset).filter(Asset.zone_id == zone.id).count()} assets"
+        for zone in zones
+    ])
+
+    # Step 2: Fetch non-compliant assets for context
+    non_compliant_assets = db.query(Asset).filter(Asset.compliant == False).all()
+    non_compliant_list = "\n".join([
+        f"  - {a.asset_tag} {a.name} in {a.zone.name} ({a.compliance_type})"
+        for a in non_compliant_assets[:10]  # cap at 10 to keep prompt lean
+    ])
+
+    # Step 3: Fetch maintenance assets
+    maintenance_assets = db.query(Asset).filter(Asset.status == "maintenance").all()
+    maintenance_list = "\n".join([
+        f"  - {a.asset_tag} {a.name} in {a.zone.name}"
+        for a in maintenance_assets[:10]
+    ])
+
+    # Step 4: Build the system prompt with injected real data
+    # This is the key technique — the AI knows your actual data, not guesses
+    system_prompt = f"""You are an operational assistant for the Vigilance facility asset tracking system.
+You have access to real-time data from the facility database. Answer questions concisely and accurately.
+
+CURRENT FACILITY STATUS:
+- Total assets: {total}
+- Active: {active}
+- Inactive: {inactive}
+- Under maintenance: {maintenance}
+- Non-compliant: {non_compliant}
+
+ZONE BREAKDOWN:
+{zone_summary}
+
+NON-COMPLIANT ASSETS ({non_compliant} total, showing up to 10):
+{non_compliant_list if non_compliant_list else "  None — all assets compliant"}
+
+ASSETS UNDER MAINTENANCE ({maintenance} total, showing up to 10):
+{maintenance_list if maintenance_list else "  None currently under maintenance"}
+
+Answer the operator's question using only this data. Be direct and specific.
+If asked something outside this data, say you don't have that information.
+Keep responses brief — operators are working, not reading essays."""
+
+    # Step 5: Call the Anthropic API
+    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+
+    message = client.messages.create(
+        model="claude-haiku-4-5",  # Fast + cheap — perfect for a chatbot
+        max_tokens=512,
+        system=system_prompt,
+        messages=[
+            {"role": "user", "content": request.message}
+        ],
+    )
+
+    return ChatResponse(reply=message.content[0].text)
