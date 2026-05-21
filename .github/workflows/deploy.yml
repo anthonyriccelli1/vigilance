@@ -85,6 +85,6 @@ jobs:
       - name: Build and deploy frontend to S3
         run: |
           cd frontend
-          npm ci
+          npm install
           npm run build
           aws s3 sync dist/ s3://vigilance-frontend --delete
