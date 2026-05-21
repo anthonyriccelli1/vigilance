@@ -12,7 +12,6 @@
 
 import { useEffect, useState } from "react";
 import { theme } from "../theme";
-import { useAssetFeed } from "../hooks/useAssetFeed";
 import { Activity, Database, Globe, Radio, Clock } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
@@ -27,6 +26,34 @@ interface CheckResult {
   status:        "healthy" | "degraded" | "unreachable" | "checking";
   latencyMs:     number | null;
   lastChecked:   Date | null;
+}
+
+function useWebSocketCheck() {
+  const [wsStatus, setWsStatus] = useState<"healthy" | "unreachable" | "checking">("checking");
+  const [eventCount, setEventCount] = useState(0);
+  const WS_URL = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/^http/, "ws") + "/ws";
+
+  useEffect(() => {
+    let ws: WebSocket;
+    let cancelled = false;
+
+    try {
+      ws = new WebSocket(WS_URL);
+      ws.onopen  = () => { if (!cancelled) setWsStatus("healthy"); };
+      ws.onmessage = () => { if (!cancelled) setEventCount(c => c + 1); };
+      ws.onerror = () => { if (!cancelled) setWsStatus("unreachable"); };
+      ws.onclose = () => { if (!cancelled) setWsStatus("unreachable"); };
+    } catch {
+      setWsStatus("unreachable");
+    }
+
+    return () => {
+      cancelled = true;
+      ws?.close();
+    };
+  }, []);
+
+  return { wsStatus, eventCount };
 }
 
 function useHealthCheck() {
@@ -191,16 +218,16 @@ function HealthCard({
 
 export default function SystemHealth() {
   const { api, db, uptimeStart } = useHealthCheck();
-  const { connected, moves }     = useAssetFeed([]);
+  const { wsStatus, eventCount } = useWebSocketCheck();
   const uptime                   = useUptime(uptimeStart);
 
   const wsResult: CheckResult = {
-    status:      connected ? "healthy" : "unreachable",
+    status:      wsStatus,
     latencyMs:   null,
     lastChecked: new Date(),
   };
 
-  const allHealthy = api.status === "healthy" && db.status === "healthy" && connected;
+  const allHealthy = api.status === "healthy" && db.status === "healthy" && wsStatus === "healthy";
 
   return (
     <div style={{ padding: 32, maxWidth: 1100, margin: "0 auto" }}>
@@ -255,7 +282,7 @@ export default function SystemHealth() {
           icon={<Radio size={16} color={theme.accent.primary} />}
           label="WebSocket Feed"
           result={wsResult}
-          detail={`${moves.length} events received this session`}
+          detail={`${eventCount} events received this session`}
         />
       </div>
 
