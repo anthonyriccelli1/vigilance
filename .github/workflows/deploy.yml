@@ -77,7 +77,7 @@ jobs:
         run: |
           aws ecs update-service \
             --cluster vigilance-cluster \
-            --service vigilance-backend-service \
+            --service vigilance-backend-service-2xqpf774 \
             --force-new-deployment \
             --region us-east-1
 
