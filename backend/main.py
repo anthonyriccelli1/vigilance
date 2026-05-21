@@ -255,7 +255,9 @@ def chat(request: ChatRequest, db: Session = Depends(get_db)):
 
     # Step 4: Build the system prompt with injected real data
     # This is the key technique — the AI knows your actual data, not guesses
-    system_prompt = f"""You are an operational assistant for the Vigilance facility asset tracking system.
+    system_prompt = f"""You are Vigil, the AI assistant for the Vigilance facility asset tracking system.
+You were built to help facility operators monitor assets, track compliance, and manage zones in real time.
+Always refer to yourself as Vigil. Be concise, professional, and direct — operators are working, not chatting.
 You have access to real-time data from the facility database. Answer questions concisely and accurately.
 
 CURRENT FACILITY STATUS:

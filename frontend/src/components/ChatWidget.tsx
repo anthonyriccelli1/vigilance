@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from "react";
-import { MessageSquare, X, Send, Loader2, Bot, User } from "lucide-react";
+import { X, Send, Loader2, User } from "lucide-react";
 import { theme } from "../theme";
+
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 interface Message {
   role: "user" | "assistant";
@@ -19,7 +21,7 @@ export default function ChatWidget() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      content: "Hello. I'm the Vigilance AI assistant. Ask me anything about your facility assets and zones.",
+      content: "Hey, I'm Vigil — your facility AI. Ask me anything about your assets, zones, or compliance status.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -40,7 +42,7 @@ export default function ChatWidget() {
     setLoading(true);
 
     try {
-      const response = await fetch("http://localhost:8000/chat", {
+      const response = await fetch(`${API_BASE}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text }),
@@ -99,7 +101,7 @@ export default function ChatWidget() {
           onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.1)"; }}
           onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
         >
-          <MessageSquare size={22} color="#fff" />
+          <img src="/vigil-avatar.png" alt="Vigil" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover" }} />
         </button>
       )}
 
@@ -134,19 +136,10 @@ export default function ChatWidget() {
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div
-                style={{
-                  background: theme.accent.primaryDim,
-                  borderRadius: 6,
-                  padding: 5,
-                  display: "flex",
-                }}
-              >
-                <Bot size={16} color={theme.accent.primary} />
-              </div>
+              <img src="/vigil-avatar.png" alt="Vigil" style={{ width: 32, height: 32, borderRadius: "50%", objectFit: "cover" }} />
               <div>
                 <div style={{ color: theme.text.primary, fontSize: 14, fontWeight: 600 }}>
-                  Vigilance AI
+                  Vigil
                 </div>
                 <div style={{ color: theme.accent.primary, fontSize: 11 }}>
                   ● Online
@@ -194,7 +187,7 @@ export default function ChatWidget() {
                 >
                   {msg.role === "user"
                     ? <User size={14} color={theme.accent.secondary} />
-                    : <Bot size={14} color={theme.accent.primary} />
+                    : <img src="/vigil-avatar.png" alt="Vigil" style={{ width: 18, height: 18, borderRadius: "50%", objectFit: "cover" }} />
                   }
                 </div>
 
@@ -219,8 +212,8 @@ export default function ChatWidget() {
             {/* Loading indicator */}
             {loading && (
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <div style={{ width: 28, height: 28, borderRadius: "50%", background: theme.accent.primaryDim, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Bot size={14} color={theme.accent.primary} />
+                <div style={{ width: 28, height: 28, borderRadius: "50%", overflow: "hidden", flexShrink: 0 }}>
+                  <img src="/vigil-avatar.png" alt="Vigil" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                 </div>
                 <div style={{ padding: "8px 12px", background: theme.bg.primary, borderRadius: "4px 12px 12px 12px", border: `1px solid ${theme.bg.border}` }}>
                   <Loader2 size={14} color={theme.text.muted} style={{ animation: "spin 1s linear infinite" }} />

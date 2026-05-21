@@ -14,7 +14,6 @@ build/
 # Environment variables (NEVER commit secrets)
 .env
 .env.local
-.env.production
 
 # IDE
 .vscode/
