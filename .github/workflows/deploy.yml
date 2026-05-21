@@ -82,7 +82,10 @@ jobs:
             --region us-east-1
 
       # Step 5 — Build frontend and sync to S3
+      # VITE_API_URL is injected at build time so the compiled JS points to the ALB
       - name: Build and deploy frontend to S3
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
         run: |
           cd frontend
           npm install
