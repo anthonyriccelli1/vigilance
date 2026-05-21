@@ -66,6 +66,32 @@ def health_check():
     return {"status": "healthy", "service": "vigilance-api"}
 
 
+@app.get("/health/detailed")
+def health_detailed(db: Session = Depends(get_db)):
+    """
+    Deep health check — verifies API is up AND database is reachable.
+    Returns response time for the DB query so the frontend can display latency.
+    """
+    import time
+
+    # Measure how long a simple DB query takes
+    db_start = time.monotonic()
+    try:
+        db.execute(__import__("sqlalchemy").text("SELECT 1"))
+        db_latency_ms = round((time.monotonic() - db_start) * 1000, 1)
+        db_status = "healthy"
+    except Exception as e:
+        db_latency_ms = None
+        db_status = f"unreachable: {str(e)}"
+
+    return {
+        "api":      "healthy",
+        "database": db_status,
+        "db_latency_ms": db_latency_ms,
+        "service":  "vigilance-api",
+    }
+
+
 @app.websocket("/ws")
 async def websocket_feed(websocket: WebSocket):
     """

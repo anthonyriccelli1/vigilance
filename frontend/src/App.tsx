@@ -3,6 +3,7 @@ import Layout from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import FacilityMap from "./pages/FacilityMap";
 import Assets from "./pages/Assets";
+import SystemHealth from "./pages/SystemHealth";
 import { FacilityMapProvider } from "./facilityMapStore";
 
 export default function App() {
@@ -16,6 +17,7 @@ export default function App() {
             <Route index element={<Dashboard />} />
             <Route path="map" element={<FacilityMap />} />
             <Route path="assets" element={<Assets />} />
+            <Route path="health" element={<SystemHealth />} />
           </Route>
         </Routes>
       </BrowserRouter>

@@ -1,12 +1,13 @@
 import { NavLink, Outlet } from "react-router";
-import { LayoutDashboard, Map, Package } from "lucide-react";
+import { LayoutDashboard, Map, Package, Activity } from "lucide-react";
 import { theme } from "../theme";
 import ChatWidget from "./ChatWidget";
 
 const NAV_ITEMS = [
-  { to: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { to: "/map", icon: Map, label: "Facility Map" },
-  { to: "/assets", icon: Package, label: "Assets" },
+  { to: "/",      icon: LayoutDashboard, label: "Dashboard"     },
+  { to: "/map",   icon: Map,             label: "Facility Map"  },
+  { to: "/assets",icon: Package,         label: "Assets"        },
+  { to: "/health",icon: Activity,        label: "System Health" },
 ];
 
 export default function Layout() {
