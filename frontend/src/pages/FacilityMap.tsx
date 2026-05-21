@@ -260,7 +260,7 @@ function FloorPills({ floors, activeFloorId, onSelect, onAdd, onRename, onDelete
 
 export default function FacilityMap() {
   const map = useFacilityMap();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [, setSearchParams] = useSearchParams();
 
   // Backend zone metadata (names, types) — fetched once, doesn't change often
   const [backendZones, setBackendZones]   = useState<Zone[]>([]);
@@ -280,7 +280,6 @@ export default function FacilityMap() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
 
-  const selectedZoneId = searchParams.get("zone") ?? null;
 
   // Initial REST load — gives us the full asset list to seed the WebSocket hook
   useEffect(() => { api.getZones().then(setBackendZones); }, []);
@@ -700,7 +699,7 @@ export default function FacilityMap() {
               <ZoneListPanel
                 zones={map.activeZones}
                 allAssets={allAssets}
-                selectedZoneId={selectedZone?.id ?? null}
+                selectedZoneId={null}
                 onSelect={handleZoneClick}
               />
             )}

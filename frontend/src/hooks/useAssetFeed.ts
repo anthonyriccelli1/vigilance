@@ -46,7 +46,8 @@ interface FeedState {
   connected: boolean;
 }
 
-const WS_URL      = "ws://localhost:8000/ws";
+const WS_URL = (import.meta.env.VITE_API_URL || "http://localhost:8000")
+  .replace(/^http/, "ws") + "/ws";
 const MAX_LOG     = 50;      // keep the last 50 movements in memory
 const RECONNECT_MS = 3000;   // retry delay after unexpected disconnect
 
