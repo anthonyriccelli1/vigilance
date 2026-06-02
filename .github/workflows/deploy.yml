@@ -130,23 +130,26 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install pip-audit
-        # pip-audit uses the Python Packaging Advisory Database (no API key needed)
-        run: pip install pip-audit
+      - name: Install backend dependencies + pip-audit
+        # Install the actual pinned requirements first, THEN scan what's installed.
+        # This avoids pip-audit's internal resolver diverging from what pip would install.
+        run: |
+          pip install -r backend/requirements.txt
+          pip install pip-audit
 
       - name: SCA — Python dependencies (pip-audit)
-        # --desc adds vulnerability descriptions to output
+        # Scans the packages actually installed above — not a separate resolution pass.
         # Three starlette CVEs are ignored with documented justification — see backend/requirements.txt.
         # CVE-2024-47874 and CVE-2025-54121: not exploitable (no file upload endpoints in this API).
         # PYSEC-2026-161: fix requires starlette>=1.0.1, a breaking change gated on FastAPI v1.x.
-        # All other findings must be fixed before deploy is allowed.
+        # All other findings block the deploy.
         run: |
-          pip-audit -r backend/requirements.txt -f json -o pip-audit-report.json --desc \
+          pip-audit -f json -o pip-audit-report.json --desc \
             --ignore-vuln CVE-2024-47874 \
             --ignore-vuln CVE-2025-54121 \
             --ignore-vuln PYSEC-2026-161 || true
           echo "Running pip-audit gate..."
-          pip-audit -r backend/requirements.txt --desc \
+          pip-audit --desc \
             --ignore-vuln CVE-2024-47874 \
             --ignore-vuln CVE-2025-54121 \
             --ignore-vuln PYSEC-2026-161
