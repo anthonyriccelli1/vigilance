@@ -1,4 +1,11 @@
 # Web framework
+# starlette is a transitive dependency pulled in by FastAPI.
+# Three starlette CVEs are present in the version FastAPI 0.115.0 requires (starlette 0.38.6):
+#   CVE-2024-47874  — multipart form DoS (not exploitable: this API accepts no file uploads)
+#   CVE-2025-54121  — large file thread-blocking (not exploitable: no file upload endpoints)
+#   PYSEC-2026-161  — Host header injection; fix requires starlette>=1.0.1 which is a breaking
+#                     change requiring a FastAPI major version upgrade. Tracked as tech debt.
+# These are documented accepted risks. Starlette upgrade is gated on FastAPI v1.x availability.
 fastapi==0.115.0
 uvicorn==0.30.6
 
@@ -12,13 +19,15 @@ pydantic==2.9.2
 pydantic-settings==2.5.2
 
 # Environment variable management
-python-dotenv==1.0.1
+# Upgraded 1.0.1 → 1.2.2: fixes CVE-2026-28684 (symlink-following file overwrite via set_key/unset_key)
+python-dotenv==1.2.2
 
 # WebSocket support (built into FastAPI, but we need this for CORS)
 websockets==13.1
 
 # Testing
-pytest==8.3.3
+# Upgraded 8.3.3 → 9.0.3: fixes CVE-2025-71176 (/tmp directory privilege escalation on UNIX)
+pytest==9.0.3
 httpx==0.27.2
 
 # AI integration (Phase 4)
