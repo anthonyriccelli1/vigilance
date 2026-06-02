@@ -8,13 +8,26 @@ on:
   pull_request:
     branches: [main]
 
+# ─────────────────────────────────────────────────────────────────────────────
+# PIPELINE SHAPE
+#
+#   test-backend ─┐
+#   sast         ─┼──► deploy ──► dast
+#   sca          ─┘
+#
+# All three security gates (tests, SAST, SCA) run in parallel.
+# Deploy is blocked until ALL three pass.
+# DAST runs against the live app only after a successful deploy to main.
+# ─────────────────────────────────────────────────────────────────────────────
+
 jobs:
+
   # ─────────────────────────────────────────
-  # JOB 1: Test the backend
-  # Runs on every push — if this fails, nothing else runs
+  # GATE 1: Functional tests
+  # Verifies the backend behaves correctly
   # ─────────────────────────────────────────
   test-backend:
-    name: Run Backend Tests
+    name: Tests — Backend (pytest)
     runs-on: ubuntu-latest
 
     steps:
@@ -35,14 +48,133 @@ jobs:
         run: python -m pytest test_api.py -v
 
   # ─────────────────────────────────────────
-  # JOB 2: Build, push to ECR, deploy to ECS
-  # Only runs if tests pass
-  # Only runs on pushes to main (not pull requests)
+  # GATE 2: SAST — Static Application Security Testing
+  #
+  # Scans SOURCE CODE for security vulnerabilities without running the app.
+  # Tool: Bandit — the standard Python SAST scanner.
+  #
+  # What it catches:
+  #   - SQL injection patterns
+  #   - Hardcoded passwords or secrets
+  #   - Use of insecure functions (exec, eval, subprocess with shell=True)
+  #   - Weak cryptography (MD5, SHA1 for passwords)
+  #   - Insecure deserialization
+  #
+  # Pipeline behavior:
+  #   - Generates a full JSON report (uploaded as artifact for review)
+  #   - Fails the pipeline if any HIGH severity issue is found
+  #   - Deploy is blocked until this gate passes
+  # ─────────────────────────────────────────
+  sast:
+    name: SAST — Bandit (source code scan)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Bandit
+        run: pip install bandit
+
+      - name: Generate full SAST report (all severity levels)
+        # --exit-zero means bandit exits 0 even with findings — we want the
+        # JSON artifact regardless of outcome. The hard gate is the next step.
+        run: bandit -r backend/ -f json -o bandit-report.json --exit-zero
+
+      - name: Upload SAST report artifact
+        uses: actions/upload-artifact@v4
+        if: always()   # Upload even if the next step fails
+        with:
+          name: sast-bandit-report
+          path: bandit-report.json
+          retention-days: 30
+
+      - name: Fail pipeline on HIGH severity findings
+        # -lll = report only HIGH severity issues
+        # If bandit finds any HIGH issues, it exits non-zero → pipeline fails → deploy blocked
+        run: |
+          echo "Running HIGH severity gate..."
+          bandit -r backend/ -lll
+          echo "SAST gate passed — no HIGH severity issues found"
+
+  # ─────────────────────────────────────────
+  # GATE 3: SCA — Software Composition Analysis
+  #
+  # Scans DEPENDENCIES (not your code) for known CVEs.
+  # Tools:
+  #   - pip-audit: Python packages → checks against PyPI Advisory DB
+  #   - npm audit: Node/frontend packages → checks against npm registry
+  #
+  # What it catches:
+  #   - Known vulnerabilities in third-party libraries you depend on
+  #   - Example: if SQLAlchemy releases a CVE, this catches it before deploy
+  #
+  # This is how the SolarWinds attack could have been caught earlier —
+  # SCA tools flag when a dependency is compromised.
+  # ─────────────────────────────────────────
+  sca:
+    name: SCA — Dependency vulnerability scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pip-audit
+        # pip-audit uses the Python Packaging Advisory Database (no API key needed)
+        run: pip install pip-audit
+
+      - name: SCA — Python dependencies (pip-audit)
+        # --desc adds vulnerability descriptions to output
+        # Generates JSON report for artifact, then runs again to enforce gate
+        run: |
+          pip-audit -r backend/requirements.txt -f json -o pip-audit-report.json --desc --no-deps 2>/dev/null || \
+          pip-audit -r backend/requirements.txt -f json -o pip-audit-report.json --desc || true
+          echo "Running pip-audit gate..."
+          pip-audit -r backend/requirements.txt --desc
+
+      - name: Upload Python SCA report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sca-python-pip-audit
+          path: pip-audit-report.json
+          retention-days: 30
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm install
+
+      - name: SCA — Frontend dependencies (npm audit)
+        # --audit-level=high: only fail on HIGH or CRITICAL vulnerabilities
+        # Lower severity advisories are reported but don't block the pipeline
+        working-directory: ./frontend
+        run: npm audit --audit-level=high
+
+  # ─────────────────────────────────────────
+  # DEPLOY
+  # Blocked until test-backend + sast + sca all pass.
+  # Only runs on pushes to main (not pull requests).
   # ─────────────────────────────────────────
   deploy:
     name: Deploy to AWS
     runs-on: ubuntu-latest
-    needs: test-backend
+    needs: [test-backend, sast, sca]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:
@@ -50,7 +182,6 @@ jobs:
         uses: actions/checkout@v4
 
       # Step 1 — Give GitHub Actions permission to talk to AWS
-      # Uses the secrets we added to the GitHub repo
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -59,20 +190,39 @@ jobs:
           aws-region: us-east-1
 
       # Step 2 — Authenticate Docker to ECR
-      # Same as running: aws ecr get-login-password | docker login ...
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
       # Step 3 — Build the Docker image and push to ECR
-      # Same as: docker build → docker tag → docker push
       - name: Build, tag, and push image to ECR
         run: |
           docker build -t vigilance-backend ./backend
           docker tag vigilance-backend:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/vigilance-backend:latest
           docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/vigilance-backend:latest
 
-      # Step 4 — Tell ECS to pull the new image and redeploy
-      # Same as clicking "Force new deployment" in the console
+      # Step 4 — Enable ECR image scanning and report findings
+      # ECR scans the pushed image against the CVE database (AWS-native SCA for container images)
+      # This catches vulnerabilities in the OS packages INSIDE the Docker image
+      # (pip-audit above catches Python deps; ECR scanning catches the container layer)
+      - name: Enable ECR scan-on-push and check image findings
+        run: |
+          aws ecr put-image-scanning-configuration \
+            --repository-name vigilance-backend \
+            --image-scanning-configuration scanOnPush=true \
+            --region us-east-1
+
+          echo "Waiting 30s for ECR image scan to complete..."
+          sleep 30
+
+          echo "ECR image scan findings:"
+          aws ecr describe-image-scan-findings \
+            --repository-name vigilance-backend \
+            --image-id imageTag=latest \
+            --region us-east-1 \
+            --query 'imageScanFindings.findingSeverityCounts' \
+            --output table || echo "Scan still in progress — check ECR console for results"
+
+      # Step 5 — Tell ECS to pull the new image and redeploy
       - name: Deploy to ECS
         run: |
           aws ecs update-service \
@@ -81,7 +231,7 @@ jobs:
             --force-new-deployment \
             --region us-east-1
 
-      # Step 5 — Build frontend and sync to S3
+      # Step 6 — Build frontend and sync to S3
       # VITE_API_URL is injected at build time so the compiled JS points to the ALB
       - name: Build and deploy frontend to S3
         env:
@@ -91,3 +241,40 @@ jobs:
           npm install
           npm run build
           aws s3 sync dist/ s3://vigilance-frontend --delete
+
+  # ─────────────────────────────────────────
+  # GATE 4: DAST — Dynamic Application Security Testing
+  #
+  # Scans the LIVE, RUNNING application from the outside — the way an attacker would.
+  # Tool: OWASP ZAP (industry standard open-source DAST scanner)
+  #
+  # What it catches (that SAST cannot):
+  #   - Actual HTTP responses with missing security headers
+  #   - Open redirect vulnerabilities
+  #   - Information disclosure in error responses
+  #   - Exposed endpoints not in source code
+  #   - CORS misconfigurations
+  #
+  # Runs AFTER deploy, against the live ALB endpoint.
+  # Only runs on main branch (same condition as deploy).
+  # ─────────────────────────────────────────
+  dast:
+    name: DAST — OWASP ZAP baseline scan
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: ZAP Baseline Scan
+        # Baseline scan = passive scan only (no active attack simulation)
+        # Safe to run against production — does not modify data or send payloads
+        # For a full active scan, use zaproxy/action-full-scan (more aggressive)
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: ${{ secrets.VITE_API_URL }}
+          rules_file_name: '.zap/rules.tsv'   # Ignore known-acceptable findings (see .zap/rules.tsv)
+          cmd_options: '-I'                    # -I = don't fail on WARN-level findings, only FAIL-level
+          issue_title: 'DAST: ZAP Baseline Scan Results'

@@ -1,0 +1,5 @@
+10020	IGNORE	# X-Frame-Options — not required for an API endpoint
+10021	IGNORE	# X-Content-Type-Options — acceptable for internal API
+10035	IGNORE	# Strict-Transport-Security — ALB terminates HTTP; HTTPS handled at CloudFront/WAF layer
+10038	IGNORE	# Content-Security-Policy — API backend, not a browser-rendered page
+10063	IGNORE	# Permissions-Policy — not applicable to a JSON API
